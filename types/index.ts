@@ -14,6 +14,7 @@ export interface User {
   status: "active" | "inactive"
   isEmailVerified: boolean
   isDeleted: boolean
+  age?: number | null
   lastActiveAt: string
   createdAt: string
   updatedAt: string

@@ -19,6 +19,50 @@ import type {
 export const loginApi = (data: { email: string; password: string }) =>
   axiosInstance.post<ApiResponse<{ user: User; accessToken: string; refreshToken: string }>>("/auth/login", data)
 
+export const forgotPasswordApi = (data: { email: string }) =>
+  axiosInstance.post<ApiResponse<{ email: string; expiresIn: number; resendAfter: number }>>(
+    "/auth/forgot-password",
+    data
+  )
+
+export const resendOtpApi = (data: { email: string; type: "password_reset" | "email_verification" }) =>
+  axiosInstance.post<ApiResponse<{ email: string; expiresIn: number; resendAfter: number }>>(
+    "/auth/resend-otp",
+    data
+  )
+
+export const verifyOtpApi = (data: {
+  email: string
+  otp: string
+  type: "password_reset" | "email_verification"
+}) =>
+  axiosInstance.post<ApiResponse<{ resetToken: string; expiresIn: number }>>("/auth/verify-otp", data)
+
+export const resetPasswordApi = (data: {
+  resetToken: string
+  newPassword: string
+  confirmPassword: string
+}) => axiosInstance.post<ApiResponse<null>>("/auth/reset-password", data)
+
+export const changePasswordApi = (data: {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}) => axiosInstance.patch<ApiResponse<null>>("/auth/change-password", data)
+
+// ─── Own Profile ─────────────────────────────────────
+export const getMe = () => axiosInstance.get<ApiResponse<User>>("/users/me")
+
+export const updateMe = (data: {
+  userName?: string
+  firstName?: string
+  lastName?: string
+  phone?: string
+  bio?: string
+  dateOfBirth?: string
+  timezone?: string
+}) => axiosInstance.patch<ApiResponse<User>>("/users/me", data)
+
 // ─── Dashboard ──────────────────────────────────────
 export const getDashboardStats = () =>
   axiosInstance.get<ApiResponse<DashboardStats>>("/admin/dashboard/stats")
@@ -129,8 +173,16 @@ export const deleteQuote = (id: string) =>
 export const listCoverMoods = () =>
   axiosInstance.get<ApiResponse<CoverMood[]>>("/admin/content/cover-moods")
 
+export const createCoverMoods = (files: File[]) => {
+  const formData = new FormData()
+  files.forEach((file) => formData.append("images", file))
+  return axiosInstance.post<ApiResponse<CoverMood[]>>("/admin/content/cover-moods", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  })
+}
+
 export const deleteCoverMood = (id: string) =>
-  axiosInstance.delete<ApiResponse<null>>(`/admin/content/cover-moods/${id}`)
+  axiosInstance.delete<ApiResponse<CoverMood | null>>(`/admin/content/cover-moods/${id}`)
 
 // ─── Content: Static Pages ───────────────────────────
 export const getPage = (slug: string) =>

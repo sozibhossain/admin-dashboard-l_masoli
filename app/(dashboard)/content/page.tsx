@@ -1,740 +1,334 @@
 "use client"
 
-import { useState } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useRef, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   listAreas,
   createArea,
-  updateArea,
   deleteArea,
   listPriorities,
   createPriority,
-  updatePriority,
   deletePriority,
   listQuotes,
   createQuote,
-  updateQuote,
   deleteQuote,
   listCoverMoods,
+  createCoverMoods,
   deleteCoverMood,
 } from "@/lib/api"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { AreaOfLife, Priority, MotivationQuote, CoverMood } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Loader2,
-} from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Plus, Trash2, X, Upload, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-
-type EditState<T> = { open: boolean; item: T | null }
 
 export default function ContentPage() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Content Management</h1>
+        <h1 className="text-2xl font-bold">Add content</h1>
         <p className="text-sm text-muted-foreground">
-          Manage areas of life, priorities, quotes, and cover moods
+          Manage areas of life, priorities, motivation speeches, and mood covers
         </p>
       </div>
 
-      <Tabs defaultValue="areas" className="space-y-4">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="areas">Areas of Life</TabsTrigger>
-          <TabsTrigger value="priorities">Priorities</TabsTrigger>
-          <TabsTrigger value="quotes">Motivation Quotes</TabsTrigger>
-          <TabsTrigger value="cover-moods">Cover Moods</TabsTrigger>
-        </TabsList>
+      <ChipSection
+        title="Area of life"
+        queryKey="areas"
+        list={listAreas}
+        create={createArea}
+        remove={deleteArea}
+        addLabel="Add Area of Life"
+        placeholder="e.g. Family"
+      />
 
-        <TabsContent value="areas">
-          <AreasTab />
-        </TabsContent>
-        <TabsContent value="priorities">
-          <PrioritiesTab />
-        </TabsContent>
-        <TabsContent value="quotes">
-          <QuotesTab />
-        </TabsContent>
-        <TabsContent value="cover-moods">
-          <CoverMoodsTab />
-        </TabsContent>
-      </Tabs>
+      <ChipSection
+        title="Priority"
+        queryKey="priorities"
+        list={listPriorities}
+        create={createPriority}
+        remove={deletePriority}
+        addLabel="Add Priority"
+        placeholder="e.g. High"
+      />
+
+      <MotivationSpeechCard />
+
+      <CoverMoodGrid />
     </div>
   )
 }
 
-function AreasTab() {
+// ─── Reusable chip picker (Area of life / Priority) ────────────
+function ChipSection({
+  title,
+  queryKey,
+  list,
+  create,
+  remove,
+  addLabel,
+  placeholder,
+}: {
+  title: string
+  queryKey: string
+  list: () => Promise<{ data: { data: (AreaOfLife | Priority)[] } }>
+  create: (data: { name: string }) => Promise<unknown>
+  remove: (id: string) => Promise<unknown>
+  addLabel: string
+  placeholder: string
+}) {
   const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editState, setEditState] = useState<EditState<any>>({ open: false, item: null })
-  const [form, setForm] = useState({ name: "", icon: "", color: "#6366f1", order: 0 })
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
 
   const { data, isLoading } = useQuery({
-    queryKey: ["areas"],
-    queryFn: async () => {
-      const res = await listAreas()
-      return res.data.data
-    },
+    queryKey: [queryKey],
+    queryFn: async () => (await list()).data.data,
   })
 
   const createMutation = useMutation({
-    mutationFn: () => createArea(form),
+    mutationFn: () => create({ name }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["areas"] })
-      setCreateOpen(false)
-      setForm({ name: "", icon: "", color: "#6366f1", order: 0 })
-      toast.success("Area created")
+      queryClient.invalidateQueries({ queryKey: [queryKey] })
+      setName("")
+      setOpen(false)
+      toast.success(`${title} added`)
     },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: () => updateArea(editState.item!._id, form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["areas"] })
-      setEditState({ open: false, item: null })
-      toast.success("Area updated")
-    },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message || `Failed to add ${title.toLowerCase()}`),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteArea(id),
+    mutationFn: (id: string) => remove(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["areas"] })
-      toast.success("Area deleted")
+      queryClient.invalidateQueries({ queryKey: [queryKey] })
+      toast.success(`${title} removed`)
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message || "Failed to remove"),
   })
 
-  const openEdit = (item: any) => {
-    setForm({ name: item.name, icon: item.icon || "", color: item.color || "#6366f1", order: item.order || 0 })
-    setEditState({ open: true, item })
-  }
-
   return (
-    <ContentTable
-      title="Areas of Life"
-      isLoading={isLoading}
-      data={data}
-      columns={["Name", "Icon", "Color", "Status"]}
-      renderRow={(item: any) => (
-        <>
-          <TableCell className="font-medium">{item.name}</TableCell>
-          <TableCell>{item.icon || "—"}</TableCell>
-          <TableCell>
-            <div className="flex items-center gap-2">
-              <div
-                className="h-4 w-4 rounded-full border"
-                style={{ backgroundColor: item.color }}
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h3 className="font-semibold text-primary">{title}</h3>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button className="flex h-6 w-6 items-center justify-center rounded-full border border-primary text-primary hover:bg-primary/10">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent>
+            <p className="text-sm font-medium mb-2">{addLabel}</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (name.trim()) createMutation.mutate()
+              }}
+              className="flex gap-2"
+            >
+              <Input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={placeholder}
               />
-              {item.color}
-            </div>
-          </TableCell>
-          <TableCell>
-            <Badge variant={item.isActive !== false ? "success" : "secondary"}>
-              {item.isActive !== false ? "Active" : "Inactive"}
-            </Badge>
-          </TableCell>
-        </>
-      )}
-      onEdit={openEdit}
-      onDelete={(id) => deleteMutation.mutate(id)}
-      createOpen={createOpen}
-      setCreateOpen={setCreateOpen}
-      createForm={form}
-      setCreateForm={setForm}
-      onCreateSubmit={() => createMutation.mutate()}
-      isCreating={createMutation.isPending}
-      editOpen={editState.open}
-      setEditOpen={(v) => setEditState({ ...editState, open: v })}
-      onEditSubmit={() => updateMutation.mutate()}
-      isEditing={updateMutation.isPending}
-    />
+              <Button type="submit" size="sm" disabled={createMutation.isPending}>
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add +"}
+              </Button>
+            </form>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-24 rounded-full" />)
+        ) : (
+          <>
+            {data?.map((item) => (
+              <span
+                key={item._id}
+                className="group flex items-center gap-1.5 rounded-full bg-card border px-4 py-2 text-sm font-medium"
+              >
+                {item.name}
+                <button
+                  onClick={() => deleteMutation.mutate(item._id)}
+                  className="hidden group-hover:inline-flex text-muted-foreground hover:text-destructive"
+                  title={`Remove ${item.name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+            {data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No {title.toLowerCase()} yet</p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
-function PrioritiesTab() {
+// ─── Motivation Speech ───────────────────────────────
+function MotivationSpeechCard() {
   const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editState, setEditState] = useState<EditState<any>>({ open: false, item: null })
-  const [form, setForm] = useState({ name: "", color: "#10b981", weight: 5, order: 0 })
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["priorities"],
-    queryFn: async () => {
-      const res = await listPriorities()
-      return res.data.data
-    },
-  })
-
-  const createMutation = useMutation({
-    mutationFn: () => createPriority(form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["priorities"] })
-      setCreateOpen(false)
-      setForm({ name: "", color: "#10b981", weight: 5, order: 0 })
-      toast.success("Priority created")
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: () => updatePriority(editState.item!._id, form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["priorities"] })
-      setEditState({ open: false, item: null })
-      toast.success("Priority updated")
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deletePriority(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["priorities"] })
-      toast.success("Priority deleted")
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const openEdit = (item: any) => {
-    setForm({ name: item.name, color: item.color || "#10b981", weight: item.weight || 5, order: item.order || 0 })
-    setEditState({ open: true, item })
-  }
-
-  return (
-    <ContentTable
-      title="Priorities"
-      isLoading={isLoading}
-      data={data}
-      columns={["Name", "Color", "Weight", "Status"]}
-      renderRow={(item: any) => (
-        <>
-          <TableCell className="font-medium">{item.name}</TableCell>
-          <TableCell>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded-full border" style={{ backgroundColor: item.color }} />
-              {item.color}
-            </div>
-          </TableCell>
-          <TableCell>{item.weight}</TableCell>
-          <TableCell>
-            <Badge variant={item.isActive !== false ? "success" : "secondary"}>
-              {item.isActive !== false ? "Active" : "Inactive"}
-            </Badge>
-          </TableCell>
-        </>
-      )}
-      onEdit={openEdit}
-      onDelete={(id) => deleteMutation.mutate(id)}
-      createOpen={createOpen}
-      setCreateOpen={setCreateOpen}
-      createForm={form}
-      setCreateForm={setForm}
-      onCreateSubmit={() => createMutation.mutate()}
-      isCreating={createMutation.isPending}
-      editOpen={editState.open}
-      setEditOpen={(v) => setEditState({ ...editState, open: v })}
-      onEditSubmit={() => updateMutation.mutate()}
-      isEditing={updateMutation.isPending}
-    />
-  )
-}
-
-function QuotesTab() {
-  const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editState, setEditState] = useState<EditState<any>>({ open: false, item: null })
-  const [form, setForm] = useState({ text: "", author: "" })
+  const [text, setText] = useState("")
 
   const { data, isLoading } = useQuery({
     queryKey: ["quotes"],
-    queryFn: async () => {
-      const res = await listQuotes()
-      return res.data.data
-    },
+    queryFn: async () => (await listQuotes()).data.data,
   })
 
   const createMutation = useMutation({
-    mutationFn: () => createQuote(form),
+    mutationFn: () => createQuote({ text }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quotes"] })
-      setCreateOpen(false)
-      setForm({ text: "", author: "" })
-      toast.success("Quote created")
+      setText("")
+      toast.success("Motivation speech added")
     },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: () => updateQuote(editState.item!._id, form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["quotes"] })
-      setEditState({ open: false, item: null })
-      toast.success("Quote updated")
-    },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message || "Failed to add"),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteQuote(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quotes"] })
-      toast.success("Quote deleted")
+      toast.success("Motivation speech removed")
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message || "Failed to remove"),
   })
 
-  const openEdit = (item: any) => {
-    setForm({ text: item.text, author: item.author || "" })
-    setEditState({ open: true, item })
-  }
-
   return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-medium">Motivation Quotes</h3>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-2" />Add Quote</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Quote</DialogTitle>
-              <DialogDescription>Add a new motivation quote</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Quote Text</Label>
-                <Textarea
-                  value={form.text}
-                  onChange={(e) => setForm({ ...form, text: e.target.value })}
-                  placeholder="Your limitation—it's only your imagination."
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Author</Label>
-                <Input
-                  value={form.author}
-                  onChange={(e) => setForm({ ...form, author: e.target.value })}
-                  placeholder="Unknown"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
-                {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Add Quote
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+    <div className="rounded-xl border-2 border-primary/30 p-5 space-y-3">
+      <h3 className="font-semibold text-primary">Motivation speech</h3>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {data?.map((item: any) => (
-            <div
-              key={item._id}
-              className="flex items-start justify-between p-4 rounded-lg border bg-card"
-            >
-              <div className="flex-1 min-w-0 mr-4">
-                <p className="text-sm font-medium">&ldquo;{item.text}&rdquo;</p>
-                <p className="text-xs text-muted-foreground mt-1">— {item.author || "Unknown"}</p>
-                <Badge variant={item.isActive !== false ? "success" : "secondary"} className="mt-2">
-                  {item.isActive !== false ? "Active" : "Inactive"}
-                </Badge>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => openEdit(item)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-destructive"
-                  onClick={() => deleteMutation.mutate(item._id)}
+      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+        {isLoading ? (
+          Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)
+        ) : (
+          <>
+            {data?.map((quote: MotivationQuote) => (
+              <div key={quote._id} className="flex items-start justify-between gap-3 py-1">
+                <p className="text-sm text-foreground/80">{quote.text}</p>
+                <button
+                  onClick={() => deleteMutation.mutate(quote._id)}
+                  className="shrink-0 text-destructive hover:text-destructive/80"
+                  title="Delete"
                 >
                   <Trash2 className="h-4 w-4" />
-                </Button>
+                </button>
               </div>
-            </div>
-          ))}
-          {(!data || data.length === 0) && (
-            <p className="text-sm text-muted-foreground text-center py-8">No quotes found</p>
-          )}
-        </div>
-      )}
+            ))}
+            {data?.length === 0 && (
+              <p className="text-sm text-muted-foreground py-4 text-center">No entries yet</p>
+            )}
+          </>
+        )}
+      </div>
 
-      {/* Edit Dialog */}
-      <Dialog open={editState.open} onOpenChange={(v) => setEditState({ ...editState, open: v })}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Quote</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Quote Text</Label>
-              <Textarea
-                value={form.text}
-                onChange={(e) => setForm({ ...form, text: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Author</Label>
-              <Input
-                value={form.author}
-                onChange={(e) => setForm({ ...form, author: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
-              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Update Quote
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (text.trim()) createMutation.mutate()
+        }}
+        className="flex gap-2"
+      >
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="e.g. Significantly increases bleeding risk due to additive anticoagulant effects."
+          className="flex-1"
+        />
+        <Button type="submit" disabled={createMutation.isPending}>
+          {createMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+          Add +
+        </Button>
+      </form>
+    </div>
   )
 }
 
-function CoverMoodsTab() {
+// ─── Mood Cover ───────────────────────────────────────
+function CoverMoodGrid() {
   const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const { data, isLoading } = useQuery({
     queryKey: ["cover-moods"],
-    queryFn: async () => {
-      const res = await listCoverMoods()
-      return res.data.data
+    queryFn: async () => (await listCoverMoods()).data.data,
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: (files: File[]) => createCoverMoods(files),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cover-moods"] })
+      toast.success("Mood cover uploaded")
     },
+    onError: (error: Error) => toast.error(error.message || "Failed to upload"),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteCoverMood(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cover-moods"] })
-      toast.success("Cover mood deleted")
+      toast.success("Mood cover removed")
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message || "Failed to remove"),
   })
 
   return (
-    <>
-      <h3 className="text-lg font-medium mb-4">Cover Moods</h3>
-      {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 w-full rounded-lg" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {data?.map((item: any) => (
-            <div
-              key={item._id}
-              className="relative group rounded-lg overflow-hidden border aspect-[3/4]"
-            >
-              <img
-                src={item.image?.url}
-                alt={item.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
-                <p className="text-white text-sm font-medium px-2 text-center">
-                  {item.title || "Untitled"}
-                </p>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => deleteMutation.mutate(item._id)}
-                  disabled={deleteMutation.isPending}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  Delete
-                </Button>
-              </div>
-              {!item.isActive && (
-                <Badge variant="secondary" className="absolute top-2 left-2">
-                  Inactive
-                </Badge>
-              )}
-            </div>
-          ))}
-          {(!data || data.length === 0) && (
-            <p className="text-sm text-muted-foreground col-span-full text-center py-8">
-              No cover moods found
-            </p>
+    <div className="space-y-3">
+      <h3 className="font-semibold text-primary">Mood Cover</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadMutation.isPending}
+          className="aspect-3/4 rounded-xl bg-muted flex flex-col items-center justify-center gap-2 text-muted-foreground hover:bg-muted/70 transition-colors"
+        >
+          {uploadMutation.isPending ? (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          ) : (
+            <Upload className="h-6 w-6" />
           )}
-        </div>
-      )}
-    </>
-  )
-}
+          <span className="text-xs font-medium px-2 text-center">Upload Cover Mood</span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || [])
+            if (files.length) uploadMutation.mutate(files)
+            e.target.value = ""
+          }}
+        />
 
-// ─── Reusable Content Table ────────────────────────
-function ContentTable({
-  title,
-  isLoading,
-  data,
-  columns,
-  renderRow,
-  onEdit,
-  onDelete,
-  createOpen,
-  setCreateOpen,
-  createForm,
-  setCreateForm,
-  onCreateSubmit,
-  isCreating,
-  editOpen,
-  setEditOpen,
-  onEditSubmit,
-  isEditing,
-}: {
-  title: string
-  isLoading: boolean
-  data: any[] | undefined
-  columns: string[]
-  renderRow: (item: any) => React.ReactNode
-  onEdit: (item: any) => void
-  onDelete: (id: string) => void
-  createOpen: boolean
-  setCreateOpen: (v: boolean) => void
-  createForm: any
-  setCreateForm: (v: any) => void
-  onCreateSubmit: () => void
-  isCreating: boolean
-  editOpen: boolean
-  setEditOpen: (v: boolean) => void
-  onEditSubmit: () => void
-  isEditing: boolean
-}) {
-  const fields = columns.filter((c) => c !== "Status" && c !== "Weight")
-
-  return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-medium">{title}</h3>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" />Add
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create {title.slice(0, -1)}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              {fields.map((field) => (
-                <div key={field} className="space-y-2">
-                  <Label>{field}</Label>
-                  {field === "Color" ? (
-                    <div className="flex gap-2">
-                      <Input
-                        type="color"
-                        value={createForm.color || "#6366f1"}
-                        onChange={(e) =>
-                          setCreateForm({ ...createForm, color: e.target.value })
-                        }
-                        className="w-12 p-1 h-9"
-                      />
-                      <Input
-                        value={createForm.color || ""}
-                        onChange={(e) =>
-                          setCreateForm({ ...createForm, color: e.target.value })
-                        }
-                        className="flex-1"
-                      />
-                    </div>
-                  ) : field === "Icon" ? (
-                    <Input
-                      value={createForm.icon || ""}
-                      onChange={(e) =>
-                        setCreateForm({ ...createForm, icon: e.target.value })
-                      }
-                      placeholder="emoji or icon name"
-                    />
-                  ) : (
-                    <Input
-                      value={createForm[field.toLowerCase()] || ""}
-                      onChange={(e) =>
-                        setCreateForm({
-                          ...createForm,
-                          [field.toLowerCase()]: e.target.value,
-                        })
-                      }
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-            <DialogFooter>
-              <Button onClick={onCreateSubmit} disabled={isCreating}>
-                {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((col) => (
-                <TableHead key={col}>{col}</TableHead>
-              ))}
-              <TableHead className="w-[80px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {columns.map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                    ))}
-                    <TableCell>
-                      <Skeleton className="h-8 w-16" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              : data?.map((item: any) => (
-                  <TableRow key={item._id}>
-                    {renderRow(item)}
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => onEdit(item)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => onDelete(item._id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-            {(!data || data.length === 0) && (
-              <TableRow>
-                <TableCell colSpan={columns.length + 1} className="text-center py-8 text-muted-foreground">
-                  No items found
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Edit Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit {title.slice(0, -1)}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {fields.map((field) => (
-              <div key={field} className="space-y-2">
-                <Label>{field}</Label>
-                {field === "Color" ? (
-                  <div className="flex gap-2">
-                    <Input
-                      type="color"
-                      value={createForm.color || "#6366f1"}
-                      onChange={(e) =>
-                        setCreateForm({ ...createForm, color: e.target.value })
-                      }
-                      className="w-12 p-1 h-9"
-                    />
-                    <Input
-                      value={createForm.color || ""}
-                      onChange={(e) =>
-                        setCreateForm({ ...createForm, color: e.target.value })
-                      }
-                      className="flex-1"
-                    />
-                  </div>
-                ) : field === "Icon" ? (
-                  <Input
-                    value={createForm.icon || ""}
-                    onChange={(e) =>
-                      setCreateForm({ ...createForm, icon: e.target.value })
-                    }
-                  />
-                ) : (
-                  <Input
-                    value={createForm[field.toLowerCase()] || ""}
-                    onChange={(e) =>
-                      setCreateForm({
-                        ...createForm,
-                        [field.toLowerCase()]: e.target.value,
-                      })
-                    }
-                  />
+        {isLoading
+          ? Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="aspect-3/4 rounded-xl" />
+            ))
+          : data?.map((mood: CoverMood) => (
+              <div key={mood._id} className="relative group aspect-3/4 rounded-xl overflow-hidden border">
+                <img src={mood.image?.url} alt={mood.title || "Cover mood"} className="w-full h-full object-cover" />
+                <button
+                  onClick={() => deleteMutation.mutate(mood._id)}
+                  title="Remove"
+                  className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-md bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                {!mood.isActive && (
+                  <span className="absolute bottom-2 left-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                    Inactive
+                  </span>
                 )}
               </div>
             ))}
-          </div>
-          <DialogFooter>
-            <Button onClick={onEditSubmit} disabled={isEditing}>
-              {isEditing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+      </div>
+    </div>
   )
 }
